@@ -83,26 +83,6 @@ check_install_x11_repo() {
     fi
 }
 
-check_glibc_repo() {
-    if [ -f "$PREFIX/etc/apt/sources.list.d/glibc.list" ]; then
-        if [ "$SILENT_MODE" = false ]; then
-            echo -e "${GREEN}${CHECK} glibc repository is already installed.${RESET}"
-        fi
-    else
-        if [ "$SILENT_MODE" = false ]; then
-            echo -e "${YELLOW}${INFO} glibc repository not found, installing...${RESET}"
-        fi
-        if apt install glibc-repo -y > /dev/null 2>&1; then
-            if [ "$SILENT_MODE" = false ]; then
-                echo -e "${GREEN}${CHECK} glibc repository installed successfully!${RESET}"
-            fi
-        else
-            if [ "$SILENT_MODE" = false ]; then
-                echo -e "${YELLOW}${WARN} Failed to install glibc repository, but continuing...${RESET}"
-            fi
-        fi
-    fi
-}
 
 if [ "$SILENT_MODE" = false ]; then
     clear
@@ -117,7 +97,6 @@ if [ "$SILENT_MODE" = false ]; then
 fi
 
 check_install_x11_repo
-check_glibc_repo
 
 run_command "Creating repository directory" "mkdir -p \$PREFIX/etc/apt/sources.list.d"
 run_command "Adding TermuxVoid repository" "echo 'deb [arch=all] https://termuxvoid.github.io/repo termuxvoid main' > \$PREFIX/etc/apt/sources.list.d/termuxvoid.list"

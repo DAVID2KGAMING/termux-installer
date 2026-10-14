@@ -1,118 +1,62 @@
 #!/data/data/com.termux/files/usr/bin/bash
+set -u
 
-GREEN="\e[32m"
-RED="\e[31m"
-YELLOW="\e[33m"
-BLUE="\e[34m"
-CYAN="\e[36m"
-MAGENTA="\e[35m"
-RESET="\e[0m"
-CHECK="✅"
-CROSS="❌"
-INFO=">> "
-WARN="❗"
+G="\e[32m"; R="\e[31m"; Y="\e[33m"; C="\e[36m"; N="\e[0m"
+SILENT=false
 
-SILENT_MODE=false
+die() { echo -e "\n${R}❌ Error: $1${N}" >&2; exit 1; }
+say() { [ "$SILENT" = true ] || echo -e "$@"; }
 
 while getopts "s" opt; do
   case $opt in
-    s) SILENT_MODE=true ;;
-    *) handle_error "Invalid option: -$OPTARG" ;;
+    s) SILENT=true ;;
+    *) die "Invalid option. Use -s for silent mode." ;;
   esac
 done
 
-print_header() {
-    echo -e "\n${BLUE}========================================${RESET}"
-    echo -e "$1"
-    echo -e "${BLUE}========================================${RESET}"
+[ -n "${PREFIX:-}" ] && [ -d "$PREFIX" ] || die "Run this inside Termux."
+command -v curl >/dev/null 2>&1 || pkg install curl -y >/dev/null 2>&1 || die "curl is required."
+
+LIST="$PREFIX/etc/apt/sources.list.d/termuxvoid.list"
+KEY="$PREFIX/etc/apt/trusted.gpg.d/termuxvoid.gpg"
+KEY_URL="https://github.com/termuxvoid/repo/raw/main/assets/termuxvoid.gpg"
+
+step() {
+  local desc="$1"; shift
+  say "${Y}>> ${desc}...${N}"
+  if "$@" >/dev/null 2>&1; then
+    say "${G}✅ ${desc} done${N}"
+  else
+    die "${desc} failed"
+  fi
 }
 
-handle_error() {
-    echo -e "\n${RED}${CROSS} Error: $1${RESET}"
-    exit 1
+add_repo() {
+  mkdir -p "$PREFIX/etc/apt/sources.list.d" || return 1
+  [ -f "$LIST" ] && cp "$LIST" "$LIST.bak"
+  echo 'deb [arch=all] https://termuxvoid.github.io/repo termuxvoid main' > "$LIST"
 }
 
-run_command() {
-    local description="$1"
-    local command="$2"
-
-    if [ "$SILENT_MODE" = false ]; then
-        echo -e "${YELLOW}${INFO} ${description}...${RESET}"
-    fi
-
-    if eval "$command" > /dev/null 2>&1; then
-        if [ "$SILENT_MODE" = false ]; then
-            echo -e "${GREEN}${CHECK} ${description} completed successfully!${RESET}"
-        fi
-        return 0
-    else
-        handle_error "Failed to ${description,,}"
-        return 1
-    fi
+get_key() {
+  local tmp
+  tmp="$(mktemp)" || return 1
+  curl -fsSL "$KEY_URL" -o "$tmp" && [ -s "$tmp" ] || { rm -f "$tmp"; return 1; }
+  mv "$tmp" "$KEY"
 }
 
-display_logo() {
-    echo -e "${MAGENTA}"
-    echo -e "▀▛▘               ▌ ▌   ▗   ▌"
-    echo -e " ▌▞▀▖▙▀▖▛▚▀▖▌ ▌▚▗▘▚▗▘▞▀▖▄ ▞▀▌"
-    echo -e " ▌▛▀ ▌  ▌▐ ▌▌ ▌▗▚ ▝▞ ▌ ▌▐ ▌ ▌"
-    echo -e " ▘▝▀▘▘  ▘▝ ▘▝▀▘▘ ▘ ▘ ▝▀ ▀▘▝▀▘"
-    echo -e "${RESET}"
-    echo -e "${CYAN}TermuxVoid Repository Installer${RESET}"
-    echo -e ""
-}
+say "${C}TermuxVoid Repository Installer${N}"
 
-check_install_x11_repo() {
-    if [ -f "$PREFIX/etc/apt/sources.list.d/x11.list" ]; then
-        if [ "$SILENT_MODE" = false ]; then
-            echo -e "${GREEN}${CHECK} X11 repository is already installed.${RESET}"
-        fi
-    else
-        if [ "$SILENT_MODE" = false ]; then
-            echo -e "${YELLOW}${INFO} X11 repository not found, installing...${RESET}"
-        fi
-        if apt install x11-repo -y > /dev/null 2>&1; then
-            if [ "$SILENT_MODE" = false ]; then
-                echo -e "${GREEN}${CHECK} X11 repository installed successfully!${RESET}"
-            fi
-        else
-            if [ "$SILENT_MODE" = false ]; then
-                echo -e "${YELLOW}${WARN} Failed to install X11 repository, but continuing...${RESET}"
-            fi
-        fi
-    fi
-}
-
-
-if [ "$SILENT_MODE" = false ]; then
-    clear
-    display_logo
-    echo -e "${INFO} This script will:"
-    echo -e "  • Install X11 repository if needed"
-    echo -e "  • Add the TermuxVoid repository"
-    echo -e "  • Download and install the GPG key"
-    echo -e "  • Configure package management"
-    echo -e "  • Update your package list"
-    echo -e "  • Install tvpkg (TermuxVoid package manager)${RESET}"
+if [ ! -f "$PREFIX/etc/apt/sources.list.d/x11.list" ]; then
+  say "${Y}>> Installing X11 repo (optional)...${N}"
+  apt install x11-repo -y >/dev/null 2>&1 || say "${Y}❗ X11 repo skipped${N}"
 fi
 
-check_install_x11_repo
+step "Adding TermuxVoid repository" add_repo
+step "Downloading GPG key" get_key
+step "Updating package lists" apt update -y
+step "Installing tvpkg" apt install tvpkg -y
 
-run_command "Creating repository directory" "mkdir -p \$PREFIX/etc/apt/sources.list.d"
-run_command "Adding TermuxVoid repository" "echo 'deb [arch=all] https://termuxvoid.github.io/repo termuxvoid main' > \$PREFIX/etc/apt/sources.list.d/termuxvoid.list"
-
-run_command "Downloading GPG key" "curl -sL https://github.com/termuxvoid/repo/raw/main/assets/termuxvoid.gpg -o \$PREFIX/etc/apt/trusted.gpg.d/termuxvoid.gpg"
-
-run_command "Updating package repositories" "apt update -y"
-
-run_command "Installing tvpkg (TermuxVoid package manager)" "apt install tvpkg -y"
-
-print_header "${GREEN}🎉 TermuxVoid Repository Setup Complete! 🎉${RESET}"
-echo -e "${INFO} You can now install packages from the TermuxVoid repository."
-echo -e "${INFO} Launch the TermuxVoid package manager anytime with:${RESET}"
-echo -e "${CYAN}  tvpkg     # interactive TUI${RESET}"
-echo -e "${CYAN}  tvp       # alias for tvpkg${RESET}"
-echo -e "${INFO} Install tools with:  pkg install <tool-name>${RESET}"
-echo -e "${INFO} Join our Telegram channel for updates and new tools:"
-echo -e "${BLUE}https://telegram.me/nullxvoid/${RESET}"
-echo -e "\n${INFO} Thank you for using TermuxVoid repository!${RESET}"
+say "\n${G}🎉 Setup complete!${N}"
+say "Run: ${C}tvpkg${N} (or ${C}tvp${N})"
+say "Install tools: pkg install <tool-name>"
+say "Telegram: https://telegram.me/nullxvoid/"
